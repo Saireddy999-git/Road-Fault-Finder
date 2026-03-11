@@ -1,0 +1,7 @@
+{
+  "name": "Road Fault Finder",
+  "description": "An advanced AI-powered traffic violation detection system optimizing for Indian vehicle formats and low-quality CCTV footage using Gemini Vision.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
