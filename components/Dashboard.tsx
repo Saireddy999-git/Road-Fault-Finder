@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getSupabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { LogOut, User as UserIcon, Calendar, Activity, Briefcase, MapPin } from 'lucide-react';
 
 interface DashboardProps {
@@ -12,7 +12,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const supabase = getSupabase();
         const { data: { user } } = await supabase.auth.getUser();
         setUser(user);
       } catch (err) {
@@ -24,7 +23,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout }) => {
 
   const handleLogout = async () => {
     try {
-      const supabase = getSupabase();
       await supabase.auth.signOut();
       onLogout();
     } catch (err) {

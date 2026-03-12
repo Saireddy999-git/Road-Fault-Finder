@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getSupabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
 
 interface LoginProps {
@@ -25,7 +25,6 @@ const Login: React.FC<LoginProps> = ({ onNavigateToSignup, onLoginSuccess }) => 
     setLoading(true);
 
     try {
-      const supabase = getSupabase();
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,

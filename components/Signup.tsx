@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getSupabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { Mail, Lock, User, Calendar, Briefcase, MapPin, Activity, ArrowRight, ArrowLeft, CheckCircle2 } from 'lucide-react';
 
 interface SignupProps {
@@ -56,7 +56,6 @@ const Signup: React.FC<SignupProps> = ({ onNavigateToLogin, onSignupSuccess }) =
     setLoading(true);
 
     try {
-      const supabase = getSupabase();
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
