@@ -23,6 +23,7 @@ import ViolationHistory from './components/ViolationHistory';
 import UserManagement from './components/UserManagement';
 import ReportsLog from './components/ReportsLog';
 import Auth from './components/Auth';
+import { Toaster } from 'react-hot-toast';
 import { supabase } from './lib/supabase';
 
 type Theme = 'light' | 'dark' | 'system';
@@ -113,6 +114,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+      <Toaster position="top-right" />
       {/* Sidebar */}
       <aside className={`
         ${isSidebarOpen ? 'w-64' : 'w-20'} 
@@ -237,11 +239,11 @@ const App: React.FC = () => {
         </header>
 
         <div className="max-w-7xl mx-auto">
-          {activeTab === 'dashboard' && <Dashboard onLogout={handleLogout} />}
+          {activeTab === 'dashboard' && <Dashboard onLogout={handleLogout} onNavigate={setActiveTab} />}
           {activeTab === 'upload' && <UploadSection user={currentUser} />}
           {activeTab === 'history' && <ViolationHistory isAdmin={currentUser.role === UserRole.ADMIN} />}
           {activeTab === 'reports' && <ReportsLog />}
-          {activeTab === 'admin' && currentUser.role === UserRole.ADMIN && <UserManagement />}
+          {activeTab === 'admin' && currentUser.role === UserRole.ADMIN && <UserManagement isAdmin={currentUser.role === UserRole.ADMIN} />}
         </div>
       </main>
     </div>

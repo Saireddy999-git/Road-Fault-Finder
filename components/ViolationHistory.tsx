@@ -2,8 +2,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Filter, FileDown, MoreVertical, Check, X, Eye, History } from 'lucide-react';
 import { Violation, ViolationType } from '../types';
-import { STORAGE_KEY_VIOLATIONS } from '../constants';
 import { formatDateTime, exportToCSV } from '../utils/helpers';
+import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
 
 interface ViolationHistoryProps {
   isAdmin: boolean;
@@ -13,23 +14,61 @@ const ViolationHistory: React.FC<ViolationHistoryProps> = ({ isAdmin }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [violations, setViolations] = useState<Violation[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadViolations = () => {
-      const data = localStorage.getItem(STORAGE_KEY_VIOLATIONS);
-      if (data) {
-        try {
-          setViolations(JSON.parse(data));
-        } catch (e) {
-          console.error("Failed to parse violations", e);
-          setViolations([]);
+    const fetchUserAndViolations = async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData.user) {
+          setUserId(authData.user.id);
+          await loadViolations(authData.user.id);
         }
+      } catch (error) {
+        console.error("Error fetching user:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
-    loadViolations();
-    window.addEventListener('storage', loadViolations);
-    return () => window.removeEventListener('storage', loadViolations);
+
+    fetchUserAndViolations();
   }, []);
+
+  const loadViolations = async (currentUserId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('violations')
+        .select('*')
+        .eq('scanned_by', currentUserId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const formattedViolations: Violation[] = data.map(row => ({
+          id: row.id,
+          vehicleNumber: row.vehicle_number,
+          violationType: row.violation_type,
+          timestamp: row.created_at,
+          location: row.location,
+          mediaUrl: row.media_url,
+          status: row.status,
+          confidence: 1,
+          detectedBy: 'User',
+          officerId: row.scanned_by
+        }));
+        setViolations(formattedViolations);
+      }
+    } catch (error: any) {
+      console.error("Error loading violations:", error);
+      toast.error("Failed to load violations.");
+    }
+  };
+
+  useEffect(() => {
+    // Real-time subscription temporarily removed as requested
+  }, [userId]);
 
   const filteredViolations = useMemo(() => {
     return violations.filter(v => {
@@ -39,10 +78,22 @@ const ViolationHistory: React.FC<ViolationHistoryProps> = ({ isAdmin }) => {
     });
   }, [violations, searchTerm, filterType]);
 
-  const handleUpdateStatus = (id: string, status: 'verified' | 'rejected') => {
-    const updated = violations.map(v => v.id === id ? { ...v, status } : v);
-    setViolations(updated);
-    localStorage.setItem(STORAGE_KEY_VIOLATIONS, JSON.stringify(updated));
+  const handleUpdateStatus = async (id: string, status: 'verified' | 'rejected') => {
+    try {
+      const { error } = await supabase
+        .from('violations')
+        .update({ status })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      toast.success(`Violation marked as ${status}`);
+      // The real-time subscription will update the list, but we can also update optimistically
+      setViolations(prev => prev.map(v => v.id === id ? { ...v, status } : v));
+    } catch (error: any) {
+      console.error("Error updating status:", error);
+      toast.error("Failed to update status.");
+    }
   };
 
   return (
@@ -146,28 +197,33 @@ const ViolationHistory: React.FC<ViolationHistoryProps> = ({ isAdmin }) => {
                   {(violation.confidence * 100).toFixed(1)}%
                 </td>
                 <td className="px-6 py-4 text-right">
-                  {violation.status === 'pending' ? (
-                    <div className="flex justify-end gap-2">
-                      <button 
-                        onClick={() => handleUpdateStatus(violation.id, 'verified')}
-                        className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-200 dark:hover:bg-green-800 transition shadow-sm" 
-                        title="Verify"
-                      >
-                        <Check className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleUpdateStatus(violation.id, 'rejected')}
-                        className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800 transition shadow-sm" 
-                        title="Reject"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition opacity-0 group-hover:opacity-100">
-                      <MoreVertical className="w-4 h-4" />
+                  <div className="flex justify-end gap-2">
+                    {violation.status === 'pending' && (
+                      <>
+                        <button 
+                          onClick={() => handleUpdateStatus(violation.id, 'verified')}
+                          className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg hover:bg-green-200 dark:hover:bg-green-800 transition shadow-sm" 
+                          title="Verify"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleUpdateStatus(violation.id, 'rejected')}
+                          className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800 transition shadow-sm" 
+                          title="Reject"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                    <button 
+                      className="p-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition shadow-sm flex items-center gap-1"
+                      title="View Details"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span className="text-xs font-semibold hidden sm:inline">Details</span>
                     </button>
-                  )}
+                  </div>
                 </td>
               </tr>
             )) : (

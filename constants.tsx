@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-export const APP_NAME = "Road Fault Finder";
+export const APP_NAME = "Traffic Violator";
 export const STORAGE_KEY_VIOLATIONS = 'violator_vision_violations';
 export const STORAGE_KEY_USERS = 'violator_vision_users';
 

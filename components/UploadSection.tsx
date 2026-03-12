@@ -3,6 +3,8 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, CheckCircle2, AlertCircle, Loader2, ShieldCheck, ListChecks } from 'lucide-react';
 import { User, Violation } from '../types';
 import { STORAGE_KEY_VIOLATIONS } from '../constants';
+import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
 import { analyzeTrafficMedia } from '../services/geminiService';
 import { fileToBase64 } from '../utils/helpers';
 
@@ -28,6 +30,76 @@ const UploadSection: React.FC<UploadSectionProps> = ({ user }) => {
     }
   };
 
+  const uploadViolation = async (detections: any[], mediaFile: File) => {
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error("User not authenticated");
+      }
+      const userId = authData.user.id;
+
+      let mediaUrl = null;
+      if (mediaFile) {
+        const fileExt = mediaFile.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+        const filePath = `${userId}/${fileName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('violation-media')
+          .upload(filePath, mediaFile);
+          
+        if (uploadError) {
+          console.error("Error uploading media:", uploadError);
+          toast.error("Failed to upload media file.");
+        } else {
+          const { data: publicUrlData } = supabase.storage
+            .from('violation-media')
+            .getPublicUrl(filePath);
+          mediaUrl = publicUrlData.publicUrl;
+        }
+      }
+
+      const newViolations = detections.map(det => ({
+        vehicle_number: det.vehicleNumber,
+        vehicle_type: 'unknown',
+        violation_type: det.violationType,
+        location: 'Traffic Sector Unit 04', 
+        media_url: mediaUrl,
+        status: 'pending',
+        scanned_by: userId
+      }));
+
+      const { data: insertedData, error: insertError } = await supabase
+        .from('violations')
+        .insert(newViolations)
+        .select();
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      toast.success("Violation saved to database ✓");
+      
+      return insertedData?.map(row => ({
+        id: row.id,
+        vehicleNumber: row.vehicle_number,
+        violationType: row.violation_type,
+        timestamp: row.created_at,
+        location: row.location,
+        mediaUrl: row.media_url,
+        status: row.status,
+        confidence: detections.find(d => d.vehicleNumber === row.vehicle_number)?.confidence || 1,
+        detectedBy: user.name,
+        officerId: row.scanned_by
+      })) as Violation[];
+
+    } catch (err: any) {
+      console.error("Upload failed:", err);
+      toast.error(`Upload failed: ${err.message}`);
+      throw err;
+    }
+  };
+
   const processMedia = async () => {
     if (!file) return;
 
@@ -46,29 +118,14 @@ const UploadSection: React.FC<UploadSectionProps> = ({ user }) => {
         return;
       }
 
-      const newViolations: Violation[] = aiResult.detections.map(det => ({
-        id: Math.random().toString(36).substr(2, 9).toUpperCase(),
-        vehicleNumber: det.vehicleNumber,
-        violationType: det.violationType,
-        timestamp: new Date().toISOString(),
-        location: 'Traffic Sector Unit 04', 
-        mediaUrl: preview || '',
-        status: 'pending',
-        confidence: det.confidence,
-        detectedBy: user.name,
-        officerId: user.id // Save the login ID
-      }));
+      const savedViolations = await uploadViolation(aiResult.detections, file);
 
-      // Save to local storage
-      const existing = localStorage.getItem(STORAGE_KEY_VIOLATIONS);
-      const violations = existing ? JSON.parse(existing) : [];
-      // Add all new detections to the top
-      localStorage.setItem(STORAGE_KEY_VIOLATIONS, JSON.stringify([...newViolations, ...violations]));
-
-      setResults(newViolations);
+      if (savedViolations) {
+        setResults(savedViolations);
+      }
     } catch (err: any) {
       console.error(err);
-      setError("AI Analysis failed. Ensure the plate and violation are visible in the frame.");
+      setError("AI Analysis or Database Upload failed. Ensure the plate and violation are visible in the frame.");
     } finally {
       setIsProcessing(false);
     }
